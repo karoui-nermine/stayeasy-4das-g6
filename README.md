@@ -30,15 +30,15 @@ Projet du module **Architecture Web Distribuée (AWD) 2026–2027**, voir le [ra
 
 ## 1. Contexte et objectifs
 
-StayEasy centralise dans un espace unique des opérations aujourd'hui dispersées : recherche de logement, réservation, paiement, suivi de la maintenance, colocation et communication entre les acteurs.
+StayEasy centralise dans un espace unique des opérations aujourd'hui dispersées : recherche de logement, réservation, facturation, suivi de la maintenance, colocation et communication entre les acteurs.
 
 **Problématique** : comment aider les personnes en quête de repos ou d'une expérience unique à trouver un lieu calme proche de la nature, tout en donnant de la visibilité aux maisons d'hôtes isolées ?
 
 **Périmètre**
 
-- Rechercher, consulter et réserver un hébergement, avec un **paiement simulé**.
+- Rechercher, consulter et réserver un hébergement, avec **génération automatique de la facture** à la confirmation de la réservation. Le règlement de la facture se fait hors plateforme.
 - Offrir aux propriétaires des outils de gestion des hébergements, chambres, réservations et annonces.
-- Proposer un parcours de **colocation** : séjours partagés, matching de compatibilité, activités et votes de groupe.
+- Proposer un parcours de **colocation** : séjours partagés, matching de compatibilité, activités et votes de groupe, avec **facture de groupe** et répartition des coûts entre participants.
 - Suivre les interventions techniques et l'état opérationnel des chambres.
 - Informer les utilisateurs par des notifications **sans bloquer** les opérations principales.
 - Sécuriser l'accès par rôles grâce à une authentification centralisée.
@@ -47,7 +47,7 @@ StayEasy centralise dans un espace unique des opérations aujourd'hui dispersée
 
 | Acteur | Fonctionnalités principales |
 |---|---|
-| **Voyageur / Étudiant** | Recherche d'hébergements, consultation des chambres, réservation, paiement simulé, notifications, demande pour rejoindre un séjour partagé, activités, votes et retours d'expérience |
+| **Voyageur / Étudiant** | Recherche d'hébergements, consultation des chambres, réservation, consultation des factures, notifications, demande pour rejoindre un séjour partagé, activités, votes et retours d'expérience |
 | **Propriétaire** | Publication et gestion des hébergements et chambres, gestion des réservations, annonces de colocation, traitement des candidatures |
 | **Équipe technique** | Suivi des interventions, mise à jour de l'état opérationnel des chambres |
 
@@ -87,7 +87,7 @@ Sept microservices autonomes, **une base de données dédiée par service**, un 
 | MS2 | **Reservation** | Réservations et calendrier | H2 | 8082 |
 | MS3 | **Maintenance** | Interventions techniques | H2 | 8083 |
 | MS4 | **Colocation** | Séjours partagés, annonces et candidatures | MySQL | 8084 |
-| MS5 | **Payment** | Paiements simulés et remboursements | H2 | 8085 |
+| MS5 | **Facturation** | Factures de groupe, répartition des coûts et avoirs | H2 | 8085 |
 | MS6 | **Notification** | Messages et historique | MySQL | 8086 |
 | MS7 | **User** (commun) | Profils métier | PostgreSQL | 8087 |
 
@@ -97,7 +97,7 @@ Sept microservices autonomes, **une base de données dédiée par service**, un 
 - **MS2 Reservation** : les nuits sont bloquées de façon atomique à la création pour éviter la double réservation.
 - **MS3 Maintenance** : une chambre ne peut pas être mise en maintenance sur une période couverte par une réservation confirmée.
 - **MS4 Colocation** : un séjour ne dépasse pas `maxParticipants` ; l'adhésion passe par une candidature (`PENDING`) traitée par l'organisateur.
-- **MS5 Payment** : deux demandes avec la même clé `idempotencyKey` ne produisent qu'un seul paiement ; la somme des remboursements ne dépasse jamais le montant payé.
+- **MS5 Facturation** : un même événement reçu deux fois ne produit qu'une seule facture ; une facture émise n'est jamais modifiée, seulement annulée par un avoir ; la somme des avoirs ne dépasse jamais le montant facturé ; la somme des parts d'une facture de groupe est égale au total.
 - **MS6 Notification** : un échec d'envoi ne remonte jamais à l'émetteur ; chaque événement est dédupliqué grâce à son identifiant de message.
 - **MS7 User** : aucun mot de passe n'est stocké par StayEasy ; l'identité reste dans Keycloak, le lien se fait par `keycloakId`.
 
@@ -109,7 +109,7 @@ Sept microservices autonomes, **une base de données dédiée par service**, un 
 | Reservation | Reservation, NuitBloquee | StatutReservation, MotifAnnulation |
 | Maintenance | Intervention, CommentaireIntervention | TypeIntervention, PrioriteIntervention |
 | Colocation | SharedStay, StayMember, Activity… | ExperienceType, StayStatus |
-| Payment | Paiement, Remboursement | MethodePaiement (`CARTE_BANCAIRE`, `VIREMENT`, `PORTEFEUILLE`), StatutPaiement |
+| Facturation | Facture, LigneFacture, Avoir | StatutFacture (`EMISE`, `ANNULEE`), ModeRepartition (`EQUITABLE`, `PERSONNALISE`) |
 | Notification | Notification, ModeleMessage, EvenementTraite | CanalNotification, TypeNotification |
 | User | Utilisateur, ProfilVoyageur, ProfilProprietaire | RoleUtilisateur, StatutCompte, TypeExperience |
 
@@ -117,14 +117,13 @@ Chaque service suit l'organisation **Controller · Service · Repository**.
 
 ## 5. Communication entre services
 
-Deux modes : **synchrone** (REST / OpenFeign) quand une réponse immédiate est nécessaire, **asynchrone** (événements RabbitMQ) pour informer sans bloquer.
+Deux modes : **synchrone** (REST / OpenFeign) quand une réponse immédiate est nécessaire, **asynchrone** (événements RabbitMQ) pour informer sans bloquer. La facturation est entièrement **asynchrone** : elle réagit aux événements de réservation et de colocation, sans bloquer le parcours du voyageur.
 
 ### Appels synchrones (REST / OpenFeign)
 
 | De | Vers | Objet |
 |---|---|---|
 | Reservation | Accommodation | Vérifier la chambre : `GET /api/chambres/{id}/disponibilite` |
-| Reservation | Payment | Paiement ou remboursement : `POST /api/paiements`, `POST /api/paiements/{id}/remboursements` |
 | Colocation | Accommodation | Infos de la maison d'hôtes : `GET /api/hebergements/{id}` |
 | Colocation | User | Identité et profils des participants : `GET /api/users/{id}/profil` |
 | Colocation | Reservation | Réservations de groupe : `POST /api/reservations` |
@@ -138,13 +137,15 @@ Deux modes : **synchrone** (REST / OpenFeign) quand une réponse immédiate est 
 
 | Émetteur | Événements | Consommateur |
 |---|---|---|
-| Reservation | `reservation.created` · `reservation.confirmed` · `reservation.cancelled` | Notification |
-| Payment | `payment.succeeded` · `payment.failed` · `payment.refunded` | Notification (et Colocation pour le paiement collectif) |
+| Reservation | `reservation.created` · `reservation.confirmed` · `reservation.cancelled` | Notification (et Facturation pour `reservation.confirmed` et `reservation.cancelled`) |
+| Facturation | `invoice.generated` · `invoice.cancelled` · `invoice.credited` | Notification (et Colocation pour la facture de groupe) |
 | Maintenance | `intervention.created` · `intervention.assigned` · `intervention.closed` | Notification |
 | Colocation | `sharedstay.created` · `member.requested` · `member.accepted` · `vote.created` | Notification |
-| Colocation | `colocation.payment.requested` | Payment |
+| Colocation | `colocation.invoice.requested` | Facturation |
 | Accommodation | `chambre.status.changed` | Notification |
 | User | `user.registered` | Notification |
+
+**Flux principal** : Créer un séjour partagé → Vérifier l'hébergement → Vérifier les participants → Coordonner la réservation → **Générer la facture** (`reservation.confirmed` → Facturation) → Envoyer les notifications (`invoice.generated` → Notification).
 
 ## 6. Sécurité
 
@@ -173,7 +174,7 @@ StayEasy/
 │   ├── reservation-service/       MS2
 │   ├── maintenance-service/       MS3
 │   ├── colocation-service/        MS4
-│   ├── payment-service/           MS5
+│   ├── billing-service/           MS5
 │   ├── notification-service/      MS6
 │   └── user-service/              MS7
 ├── Frontend/
@@ -229,18 +230,18 @@ Toutes les API échangent du **JSON**, passent par la Gateway et exigent un **je
 | 401 | Jeton absent ou invalide |
 | 403 | Rôle ou propriétaire non autorisé |
 | 404 | Ressource introuvable |
-| 409 | Conflit métier (chambre indisponible, séjour complet, paiement déjà traité…) |
+| 409 | Conflit métier (chambre indisponible, séjour complet, facture déjà émise…) |
 | 500 | Erreur interne du serveur |
 | 503 | Service dépendant indisponible |
 
-**Préfixes principaux** : `/api/hebergements`, `/api/chambres` (MS1) · `/api/reservations` (MS2) · `/api/interventions` (MS3) · `/api/v1/…` (MS4, ex. `/api/v1/shared-stays`) · `/api/paiements` (MS5) · `/api/notifications`, `/api/modeles` (MS6) · `/api/users` (MS7).
+**Préfixes principaux** : `/api/hebergements`, `/api/chambres` (MS1) · `/api/reservations` (MS2) · `/api/interventions` (MS3) · `/api/v1/…` (MS4, ex. `/api/v1/shared-stays`) · `/api/factures` (MS5) · `/api/notifications`, `/api/modeles` (MS6) · `/api/users` (MS7).
 
 ## 11. Risques et mesures
 
 | # | Risque | Mesure |
 |---|---|---|
 | 01 | Double réservation | Blocage atomique des nuits |
-| 02 | Paiement incertain | Idempotence et réconciliation |
+| 02 | Facture en double ou incohérente | Idempotence sur l'événement source et réconciliation |
 | 03 | Message perdu | Reprise et déduplication |
 | 04 | Retard d'intégration | Contrats partagés et priorités |
 | 05 | Service dépendant indisponible | Délais d'attente et reprises sur OpenFeign ; réponse 503 explicite |
@@ -248,7 +249,7 @@ Toutes les API échangent du **JSON**, passent par la Gateway et exigent un **je
 
 ## 12. Organisation et planning
 
-**Répartition** : un service par étudiant (E1 Accommodation, E2 Reservation, E3 Maintenance, E4 Colocation, E5 Payment, E6 Notification). Tout le groupe se partage le service User, le frontend et l'intégration, Keycloak / Gateway / Eureka, RabbitMQ et Docker, ainsi que la documentation et la démonstration.
+**Répartition** : un service par étudiant (E1 Accommodation, E2 Reservation, E3 Maintenance, E4 Colocation, E5 Facturation, E6 Notification). Tout le groupe se partage le service User, le frontend et l'intégration, Keycloak / Gateway / Eureka, RabbitMQ et Docker, ainsi que la documentation et la démonstration.
 
 **Méthode** : tâche attribuée (GitHub Projects) → branche dédiée par fonctionnalité → pull request avec relecture collective → fusion sur `main`, qui reste stable.
 
