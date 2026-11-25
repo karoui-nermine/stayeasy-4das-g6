@@ -1,0 +1,93 @@
+{
+  "realm": "stayeasy",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": true,
+  "roles": {
+    "realm": [
+      {
+        "name": "VOYAGEUR_ETUDIANT"
+      },
+      {
+        "name": "PROPRIETAIRE"
+      },
+      {
+        "name": "EQUIPE_TECHNIQUE"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "stayeasy-frontend",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:3000/*"
+      ],
+      "webOrigins": [
+        "*"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "voyageur",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "voyageur@stayeasy.tn",
+      "firstName": "Lina",
+      "lastName": "Kazdaghli",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "voyageur",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "VOYAGEUR_ETUDIANT"
+      ]
+    },
+    {
+      "username": "proprio",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "proprio@stayeasy.tn",
+      "firstName": "Karim",
+      "lastName": "Ben Ali",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "proprio",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "PROPRIETAIRE"
+      ]
+    },
+    {
+      "username": "tech",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "tech@stayeasy.tn",
+      "firstName": "Hatem",
+      "lastName": "Bouzid",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "tech",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "EQUIPE_TECHNIQUE"
+      ]
+    }
+  ]
+}

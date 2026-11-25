@@ -1,0 +1,58 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: api-gateway
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${KEYCLOAK_JWK:http://localhost:8180/realms/stayeasy/protocol/openid-connect/certs}
+  cloud:
+    gateway:
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOriginPatterns: "*"
+            allowedMethods: "*"
+            allowedHeaders: "*"
+      routes:
+        - id: accommodation
+          uri: lb://accommodation
+          predicates:
+            - Path=/api/accommodations/**,/api/rooms/**
+        - id: reservation
+          uri: lb://reservation
+          predicates:
+            - Path=/api/reservations/**
+        - id: maintenance
+          uri: lb://maintenance
+          predicates:
+            - Path=/api/maintenances/**
+        - id: colocation
+          uri: lb://colocation
+          predicates:
+            - Path=/api/v1/**
+        - id: facturation
+          uri: lb://facturation
+          predicates:
+            - Path=/api/invoices/**
+        - id: notification
+          uri: lb://notification
+          predicates:
+            - Path=/api/notifications/**
+        - id: user
+          uri: lb://user
+          predicates:
+            - Path=/api/users/**
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+  instance:
+    prefer-ip-address: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

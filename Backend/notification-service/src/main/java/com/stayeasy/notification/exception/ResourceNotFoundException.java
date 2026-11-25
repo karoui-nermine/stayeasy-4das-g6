@@ -1,0 +1,8 @@
+package com.stayeasy.notification.exception;
+
+/** Ressource introuvable (404) */
+public class ResourceNotFoundException extends RuntimeException {
+    public ResourceNotFoundException(String message) {
+        super(message);
+    }
+}
